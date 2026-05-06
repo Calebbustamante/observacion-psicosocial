@@ -12,6 +12,8 @@
 <link rel="apple-touch-icon" href="icon-192.png"/>
 <title>Observacion Aula Psicosocial</title>
 <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --bg:#f1f5f9;--card:#fff;--card-shadow:0 1px 4px rgba(0,0,0,.08);
@@ -233,6 +235,7 @@ textarea.inp{resize:vertical}
   <button class="nav-btn" data-tab="estudiantes"><span class="nav-icon">👥</span><span class="nav-label">Alumnos</span></button>
   <button class="nav-btn" data-tab="fichas"><span class="nav-icon">📄</span><span class="nav-label">Fichas</span></button>
   <button class="btn-theme" id="btn-tema">🌙 Modo noche</button>
+  <span id="sync-status" style="font-size:12px;color:rgba(255,255,255,.7);margin-left:8px;transition:opacity .5s;opacity:0"></span>
 </nav>
 <button class="btn-theme-float" id="btn-tema-float" style="display:none">🌙</button>
 <div id="content"></div>
@@ -314,18 +317,101 @@ var estudiantes = {};
 var items = [];
 var fichas = {};
 
-// ── STORAGE ──────────────────────────────────────────────────────────────────
+// ── FIREBASE CONFIG ───────────────────────────────────────────────────────────
+// ⚠️ REEMPLAZA ESTOS VALORES con los de tu proyecto Firebase:
+// Firebase Console → tu proyecto → ⚙ Configuración → Tus apps → Config
+var FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDI9mUe3T48RbFv1FjXGqe9Cc5hdoNgUbk",
+  authDomain:        "observacion-psicosocial-2026.firebaseapp.com",
+  projectId:         "observacion-psicosocial-2026",
+  storageBucket:     "observacion-psicosocial-2026.firebasestorage.app",
+  messagingSenderId: "796237783110",
+  appId:             "1:796237783110:web:0f1a18551237e67e4b2a47"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+var db = firebase.firestore();
+
+// ── STORAGE (Firestore + localStorage fallback) ───────────────────────────────
 function cargarEstudiantes() {
   try { var r=localStorage.getItem("psicosocial_est"); return r?JSON.parse(r):JSON.parse(JSON.stringify(DATOS_BASE)); }
   catch(e){ return JSON.parse(JSON.stringify(DATOS_BASE)); }
 }
-function guardarEstudiantes(){ localStorage.setItem("psicosocial_est",JSON.stringify(estudiantes)); }
+function guardarEstudiantes(){
+  localStorage.setItem("psicosocial_est",JSON.stringify(estudiantes));
+  db.collection("datos").doc("estudiantes").set({data: JSON.stringify(estudiantes)});
+}
 function cargarObs(){ try{ return JSON.parse(localStorage.getItem("psicosocial")||"[]"); }catch(e){ return []; } }
-function guardarObs(){ localStorage.setItem("psicosocial",JSON.stringify(state.obs)); }
+function guardarObs(){
+  localStorage.setItem("psicosocial",JSON.stringify(state.obs));
+}
+function guardarObFS(ob){
+  // Guarda/actualiza una obs individual en Firestore
+  db.collection("observaciones").doc(ob.id).set(ob);
+}
+function eliminarObFS(id){
+  db.collection("observaciones").doc(id).delete();
+}
 function cargarItems(){ try{ var r=localStorage.getItem("psicosocial_items"); return r?JSON.parse(r):JSON.parse(JSON.stringify(ITEMS_BASE)); }catch(e){ return JSON.parse(JSON.stringify(ITEMS_BASE)); } }
-function guardarItems(){ localStorage.setItem("psicosocial_items",JSON.stringify(items)); }
+function guardarItems(){
+  localStorage.setItem("psicosocial_items",JSON.stringify(items));
+  db.collection("datos").doc("items").set({data: JSON.stringify(items)});
+}
 function cargarFichas(){ try{ return JSON.parse(localStorage.getItem("psicosocial_fichas")||"{}"); }catch(e){ return {}; } }
-function guardarFichas(){ localStorage.setItem("psicosocial_fichas",JSON.stringify(fichas)); }
+function guardarFichas(){
+  localStorage.setItem("psicosocial_fichas",JSON.stringify(fichas));
+  db.collection("datos").doc("fichas").set({data: JSON.stringify(fichas)});
+}
+
+// ── LISTENERS TIEMPO REAL ─────────────────────────────────────────────────────
+function iniciarListeners(){
+  // Observaciones en tiempo real
+  db.collection("observaciones").onSnapshot(function(snap){
+    state.obs = [];
+    snap.forEach(function(doc){ state.obs.push(doc.data()); });
+    state.obs.sort(function(a,b){ return b.fecha > a.fecha ? 1 : -1; });
+    localStorage.setItem("psicosocial", JSON.stringify(state.obs));
+    render();
+    mostrarIndicadorSync("✅ Sincronizado");
+  }, function(err){
+    console.error("Error listener obs:", err);
+    mostrarIndicadorSync("⚠️ Sin conexión");
+  });
+
+  // Estudiantes en tiempo real
+  db.collection("datos").doc("estudiantes").onSnapshot(function(doc){
+    if(doc.exists && doc.data().data){
+      estudiantes = JSON.parse(doc.data().data);
+      localStorage.setItem("psicosocial_est", JSON.stringify(estudiantes));
+      render();
+    }
+  });
+
+  // Items en tiempo real
+  db.collection("datos").doc("items").onSnapshot(function(doc){
+    if(doc.exists && doc.data().data){
+      items = JSON.parse(doc.data().data);
+      localStorage.setItem("psicosocial_items", JSON.stringify(items));
+      render();
+    }
+  });
+
+  // Fichas en tiempo real
+  db.collection("datos").doc("fichas").onSnapshot(function(doc){
+    if(doc.exists && doc.data().data){
+      fichas = JSON.parse(doc.data().data);
+      localStorage.setItem("psicosocial_fichas", JSON.stringify(fichas));
+      render();
+    }
+  });
+}
+
+function mostrarIndicadorSync(msg){
+  var el = document.getElementById("sync-status");
+  if(!el) return;
+  el.textContent = msg;
+  el.style.opacity = "1";
+  setTimeout(function(){ el.style.opacity = "0"; }, 3000);
+}
 
 function cursos(){ return Object.keys(estudiantes).sort(); }
 function cursoDeEst(n){ var e=Object.entries(estudiantes).find(function(x){ return x[1].indexOf(n)>=0; }); return e?e[0]:""; }
@@ -1172,10 +1258,11 @@ function attachEvents(){
       var total=0;
       items.forEach(function(it){ total+=pts(it.tipo,state.reg.resp[it.nombre]); });
       var mp=maxPts(); var pct=mp>0?Math.round(total/mp*100):0;
-      state.obs.push({id:Date.now().toString(),fecha:fechaVal,estudiante:state.reg.estudiante,resp:Object.assign({},state.reg.resp),observaciones:obsText,asignatura:asigText,observador:observText,asistencia:state.reg.asistencia||"Presente",puntajeTotal:total,pct:pct});
-      guardarObs();
+      var nuevaObs={id:Date.now().toString(),fecha:fechaVal,estudiante:state.reg.estudiante,resp:Object.assign({},state.reg.resp),observaciones:obsText,asignatura:asigText,observador:observText,asistencia:state.reg.asistencia||"Presente",puntajeTotal:total,pct:pct};
+      // Guardar en Firestore (el listener actualizará state.obs automáticamente)
+      guardarObFS(nuevaObs);
       state.reg.resp={}; state.reg.estudiante=""; state.reg.fecha=""; state.reg.observaciones=""; state.reg.asignatura=""; state.reg.observador=""; state.reg.asistencia="";
-      alDiv.innerHTML='<div class="alert alert-ok">✓ Observacion guardada correctamente</div>';
+      alDiv.innerHTML='<div class="alert alert-ok">✓ Guardando en la nube...</div>';
       render();
     };
   }
@@ -1206,7 +1293,7 @@ function attachEvents(){
         var obs=state.obs.find(function(o){ return o.id===id; });
         if(!obs) return;
         showModal("Eliminar observacion","¿Eliminar la observacion de <strong>"+obs.estudiante+"</strong> del "+fmtFecha(obs.fecha)+"?",function(){
-          state.obs=state.obs.filter(function(o){ return o.id!==id; }); guardarObs(); render();
+          eliminarObFS(id);
         });
       };
     });
@@ -1228,7 +1315,7 @@ function attachEvents(){
         var total=0; items.forEach(function(it){ total+=pts(it.tipo,state.rep.editResp[it.nombre]); });
         var mp=maxPts(); var pct=mp>0?Math.round(total/mp*100):0;
         obs.fecha=newFecha; obs.resp=Object.assign({},state.rep.editResp); obs.puntajeTotal=total; obs.pct=pct;
-        guardarObs(); state.rep.editId=null; render();
+        guardarObFS(obs); state.rep.editId=null; render();
       }
     };
   }
@@ -1326,6 +1413,8 @@ items=cargarItems();
 fichas=cargarFichas();
 state.obs=cargarObs();
 render();
+// Inicia sincronización en tiempo real con Firestore
+iniciarListeners();
 
 // ── MODO NOCHE / DÍA ─────────────────────────────────────────────────────────
 (function(){
