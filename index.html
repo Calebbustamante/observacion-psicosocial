@@ -345,11 +345,25 @@ function guardarObs(){
   localStorage.setItem("psicosocial",JSON.stringify(state.obs));
 }
 function guardarObFS(ob){
-  // Guarda/actualiza una obs individual en Firestore
-  db.collection("observaciones").doc(ob.id).set(ob);
+  db.collection("observaciones").doc(ob.id).set(ob)
+    .then(function(){ console.log("✅ Obs guardada:", ob.id); })
+    .catch(function(err){
+      console.error("❌ Error Firestore:", err);
+      // Fallback: guardar en localStorage
+      var idx = state.obs.findIndex(function(o){ return o.id===ob.id; });
+      if(idx>=0) state.obs[idx]=ob; else state.obs.push(ob);
+      guardarObs();
+      alert("Sin conexión a la nube. Guardado localmente.\nError: "+err.message);
+    });
 }
 function eliminarObFS(id){
-  db.collection("observaciones").doc(id).delete();
+  db.collection("observaciones").doc(id).delete()
+    .then(function(){ console.log("✅ Obs eliminada:", id); })
+    .catch(function(err){
+      console.error("❌ Error al eliminar:", err);
+      state.obs = state.obs.filter(function(o){ return o.id!==id; });
+      guardarObs(); render();
+    });
 }
 function cargarItems(){ try{ var r=localStorage.getItem("psicosocial_items"); return r?JSON.parse(r):JSON.parse(JSON.stringify(ITEMS_BASE)); }catch(e){ return JSON.parse(JSON.stringify(ITEMS_BASE)); } }
 function guardarItems(){
