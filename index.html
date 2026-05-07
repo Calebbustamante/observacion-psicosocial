@@ -138,15 +138,16 @@ textarea.inp{resize:vertical}
 ══════════════════════════════════════════════════════════ */
 @media(max-width:640px){
 
-  body{padding-bottom:80px}
+  body{padding-bottom:62px}
 
   /* ── BOTTOM TAB BAR ─────────────────────────────────── */
   nav{
     position:fixed;bottom:0;left:0;right:0;top:auto;
-    padding:0;min-height:62px;z-index:100;
+    padding:0;min-height:58px;z-index:100;
     justify-content:space-around;
     border-top:1px solid rgba(255,255,255,.15);
     box-shadow:0 -2px 12px rgba(0,0,0,.2);
+    flex-wrap:nowrap!important;
   }
   .nav-title{display:none}
   .btn-theme{display:none!important}
@@ -160,12 +161,13 @@ textarea.inp{resize:vertical}
     box-shadow:0 2px 8px rgba(0,0,0,.25);
   }
   .nav-btn{
-    flex:1;padding:8px 4px 6px;font-size:10px;border-radius:0;
-    flex-direction:column;gap:2px;color:rgba(255,255,255,.6);
-    min-height:62px;justify-content:center;
+    flex:1;padding:5px 1px 4px;font-size:8.5px;border-radius:0;
+    flex-direction:column;gap:1px;color:rgba(255,255,255,.6);
+    min-height:58px;justify-content:center;min-width:0;
   }
   .nav-btn.active{color:#fff;background:rgba(255,255,255,.15)}
-  .nav-icon{font-size:20px}
+  .nav-icon{font-size:16px;line-height:1.2}
+  .nav-label{font-size:8.5px;line-height:1.2;white-space:nowrap}
 
   /* ── LAYOUT ──────────────────────────────────────────── */
   .container{margin:12px auto 16px;padding:0 10px}
@@ -1376,38 +1378,61 @@ function attachEvents(){
         });
         html+='</div></div>';
       });
+      // Construir lista de secciones únicas
+      var secsUnicas=[];
+      items.forEach(function(it){ if(it.seccion&&secsUnicas.indexOf(it.seccion)<0) secsUnicas.push(it.seccion); });
+      var secOpts='<option value="">-- Seleccionar sección --</option>';
+      secsUnicas.forEach(function(s){ secOpts+='<option value="'+s+'">'+s+'</option>'; });
+      secOpts+='<option value="__nueva__">➕ Nueva sección...</option>';
+
       html+='</div>'
-        +'<div style="display:flex;gap:8px;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap">'
-        +'<input type="text" id="new-item-nombre" placeholder="Nombre del indicador" style="flex:2;min-width:160px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px">'
-        +'<input type="text" id="new-item-seccion" placeholder="Sección (ej: Participacion)" style="flex:2;min-width:140px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px">'
-        +'<select id="new-item-tipo" style="flex:1;min-width:100px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px"><option value="Positivo">Positivo</option><option value="Alerta">Alerta</option></select>'
-        +'<button class="btn-primary" id="btn-add-item" style="font-size:13px;padding:8px 14px">+ Agregar</button>'
-        +'</div>'
+        +'<div style="border-top:1px solid #e2e8f0;padding-top:14px;margin-top:4px;flex-shrink:0">'
+        +'<p style="font-size:12px;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Agregar nuevo indicador</p>'
+        +'<div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px">'
+        +'<input type="text" id="new-item-nombre" placeholder="Nombre del indicador" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:14px">'
+        +'<select id="new-item-seccion" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:14px">'+secOpts+'</select>'
+        +'<input type="text" id="new-item-seccion-custom" placeholder="Nombre de la nueva sección" style="display:none;width:100%;padding:10px 12px;border:1.5px solid #3b82f6;border-radius:7px;font-size:14px">'
+        +'<div style="display:flex;gap:8px">'
+        +'<select id="new-item-tipo" style="flex:1;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:14px"><option value="Positivo">✅ Positivo</option><option value="Alerta">⚠ Alerta</option></select>'
+        +'<button class="btn-primary" id="btn-add-item" style="flex:1;font-size:14px;padding:10px">+ Agregar</button>'
+        +'</div></div>'
         +'<div id="alert-add-item" style="margin-bottom:8px"></div>'
+        +'</div>'
         +'<div style="text-align:right;flex-shrink:0"><button class="btn-cancel" id="modal-cancel" style="border:none">Cerrar</button></div>'
         +'</div></div>';
       document.getElementById("modal").innerHTML=html;
       document.getElementById("modal-cancel").onclick=function(){ document.getElementById("modal").innerHTML=""; render(); };
       document.getElementById("modal-overlay").onclick=function(e){ if(e.target===this){ document.getElementById("modal").innerHTML=""; render(); } };
+
+      // Mostrar/ocultar campo nueva sección
+      document.getElementById("new-item-seccion").onchange=function(){
+        var custom=document.getElementById("new-item-seccion-custom");
+        custom.style.display=this.value==="__nueva__"?"block":"none";
+        if(this.value==="__nueva__") custom.focus();
+      };
+
       document.getElementById("btn-add-item").onclick=function(){
         var n=(document.getElementById("new-item-nombre").value||"").trim();
-        var sec=(document.getElementById("new-item-seccion").value||"").trim();
+        var secSel=document.getElementById("new-item-seccion").value;
+        var sec=secSel==="__nueva__"
+          ?(document.getElementById("new-item-seccion-custom").value||"").trim()
+          :secSel;
         var t=document.getElementById("new-item-tipo").value;
         var alDiv=document.getElementById("alert-add-item");
         if(!n){ alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe el nombre del indicador.</div>'; return; }
-        if(!sec){ alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe el nombre de la sección.</div>'; return; }
+        if(!sec){ alDiv.innerHTML='<div class="alert alert-err">⚠ Selecciona o escribe una sección.</div>'; return; }
         if(items.find(function(x){ return x.nombre===n; })){ alDiv.innerHTML='<div class="alert alert-err">⚠ Ya existe ese indicador.</div>'; return; }
         items.push({nombre:n, tipo:t, seccion:sec});
         guardarItems();
         document.getElementById("new-item-nombre").value="";
         document.getElementById("new-item-seccion").value="";
-        alDiv.innerHTML='<div class="alert alert-ok">✓ Indicador "'+n+'" agregado.</div>';
-        // Actualizar lista sin cerrar el modal
+        document.getElementById("new-item-seccion-custom").value="";
+        document.getElementById("new-item-seccion-custom").style.display="none";
+        alDiv.innerHTML='<div class="alert alert-ok">✓ Indicador "'+n+'" agregado a "'+sec+'".</div>';
         setTimeout(function(){
           document.getElementById("modal").innerHTML=""; render();
-          // Reabrir panel
           document.getElementById("btn-indicadores") && document.getElementById("btn-indicadores").click();
-        },600);
+        },700);
       };
       document.querySelectorAll("[data-action='del-item']").forEach(function(btn){
         btn.onclick=function(){
