@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Obs Psicosocial"/>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>Observacion Aula Psicosocial</title>
+<title>Registro Psicosocial-TS</title>
 <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -230,12 +230,13 @@ textarea.inp{resize:vertical}
 </head>
 <body>
 <nav>
-  <div class="nav-title">🏫 Observacion Aula Psicosocial</div>
+  <div class="nav-title">🏫 Registro Psicosocial-TS</div>
   <button class="nav-btn active" data-tab="registro"><span class="nav-icon">📝</span><span class="nav-label">Registro</span></button>
   <button class="nav-btn" data-tab="reportes"><span class="nav-icon">📊</span><span class="nav-label">Reportes</span></button>
   <button class="nav-btn" data-tab="dashboard"><span class="nav-icon">🎯</span><span class="nav-label">Dashboard</span></button>
   <button class="nav-btn" data-tab="visitas"><span class="nav-icon">🏠</span><span class="nav-label">Visitas</span></button>
   <button class="nav-btn" data-tab="entrevistas"><span class="nav-icon">🗣</span><span class="nav-label">Entrev.</span></button>
+  <button class="nav-btn" data-tab="coordinaciones"><span class="nav-icon">🤝</span><span class="nav-label">Coord.</span></button>
   <button class="nav-btn" data-tab="estudiantes"><span class="nav-icon">👥</span><span class="nav-label">Alumnos</span></button>
   <button class="nav-btn" data-tab="fichas"><span class="nav-icon">📄</span><span class="nav-label">Fichas</span></button>
   <button class="btn-theme" id="btn-tema">🌙 Modo noche</button>
@@ -317,14 +318,16 @@ var state = {
   dash: { filtro:"" },
   est: { newNombre:"", newCurso:"", newCursoCustom:"" },
   fichas: { curso:"", estudiante:"" },
-  vis: { fecha:"", curso:"", estudiante:"", estado:"Efectuada", filtCurso:"", filtEst:"" },
-  ent: { fecha:"", curso:"", estudiante:"", observacion:"", filtCurso:"", filtEst:"" }
+  vis: { fecha:"", curso:"", estudiante:"", estado:"Efectuada", filtCurso:"", filtEst:"", editId:null },
+  ent: { fecha:"", curso:"", estudiante:"", observacion:"", apoderado:"", filtCurso:"", filtEst:"", editId:null },
+  coord: { fecha:"", curso:"", estudiante:"", nombre:"", programa:"", filtCurso:"", filtEst:"", editId:null }
 };
 var estudiantes = {};
 var items = [];
 var fichas = {};
 var visitas = [];
 var entrevistas = [];
+var coordinaciones = [];
 
 // ── FIREBASE CONFIG ───────────────────────────────────────────────────────────
 // ⚠️ REEMPLAZA ESTOS VALORES con los de tu proyecto Firebase:
@@ -394,6 +397,11 @@ function guardarEntrevistaFS(e){
     .catch(function(err){ console.error("Error entrevista:", err); });
 }
 function eliminarEntrevistaFS(id){ db.collection("entrevistas").doc(id).delete(); }
+function guardarCoordFS(c){
+  db.collection("coordinaciones").doc(c.id).set(c)
+    .catch(function(err){ console.error("Error coordinacion:", err); });
+}
+function eliminarCoordFS(id){ db.collection("coordinaciones").doc(id).delete(); }
 
 // ── LISTENERS TIEMPO REAL ─────────────────────────────────────────────────────
 function iniciarListeners(){
@@ -454,6 +462,15 @@ function iniciarListeners(){
     if(state.tab==="entrevistas") render();
     mostrarIndicadorSync("✅ Sincronizado");
   }, function(err){ console.error("Error entrevistas:", err); });
+
+  // Coordinaciones en tiempo real
+  db.collection("coordinaciones").onSnapshot(function(snap){
+    coordinaciones = [];
+    snap.forEach(function(doc){ coordinaciones.push(doc.data()); });
+    coordinaciones.sort(function(a,b){ return b.fecha > a.fecha ? 1 : -1; });
+    if(state.tab==="coordinaciones") render();
+    mostrarIndicadorSync("✅ Sincronizado");
+  }, function(err){ console.error("Error coordinaciones:", err); });
 }
 
 function mostrarIndicadorSync(msg){
@@ -504,6 +521,7 @@ function render(){
   else if(state.tab==="fichas") html=renderFichas();
   else if(state.tab==="visitas") html=renderVisitas();
   else if(state.tab==="entrevistas") html=renderEntrevistas();
+  else if(state.tab==="coordinaciones") html=renderCoordinaciones();
   document.getElementById("content").innerHTML=html;
   attachEvents();
 }
@@ -869,15 +887,41 @@ function renderVisitas(){
   lista.forEach(function(v){
     var ef=v.estado==="Efectuada";
     var bg=ef?"#dcfce7":"#fee2e2"; var tc=ef?"#166534":"#991b1b"; var br=ef?"#86efac":"#fecaca";
-    listaHtml+='<div class="obs-card">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(v.estudiante,36)
-      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+v.estudiante+'</div>'
-      +'<div style="font-size:12px;color:var(--txt-soft)">'+v.curso+' · '+fmtFecha(v.fecha)+'</div></div>'
-      +'<span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:'+bg+';color:'+tc+';border:1px solid '+br+'">'+v.estado+'</span>'
-      +'</div>';
-    if(v.observacion) listaHtml+='<div style="font-size:13px;color:var(--txt-soft);padding:8px 12px;background:var(--sec-bg);border-radius:8px;margin-bottom:8px">'+v.observacion+'</div>';
-    listaHtml+='<button class="btn-danger" data-action="del-visita" data-id="'+v.id+'" style="font-size:12px;padding:6px 12px">🗑 Eliminar</button>'
-      +'</div>';
+    if(s.editId===v.id){
+      // ── Formulario edición inline ──
+      var eOpts='<option value="">Seleccionar...</option>';
+      (estudiantes[v.curso]||[]).forEach(function(e){ eOpts+='<option'+(e===v.estudiante?' selected':'')+'>'+e+'</option>'; });
+      listaHtml+='<div class="obs-card" style="border:2px solid #3b82f6">'
+        +'<p style="font-size:12px;font-weight:700;color:#3b82f6;margin-bottom:10px">✏ Editando visita</p>'
+        +'<div class="form-grid2" style="margin-bottom:10px">'
+        +'<div><label class="lbl">Fecha</label><input type="date" id="vis-edit-fecha" value="'+v.fecha+'"></div>'
+        +'<div><label class="lbl">Estudiante</label><select id="vis-edit-est">'+eOpts+'</select></div>'
+        +'</div>'
+        +'<div class="form-group"><label class="lbl">Estado</label>'
+        +'<div style="display:flex;gap:8px;margin-top:4px">'
+        +'<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;padding:10px;border-radius:8px;border:1.5px solid '+(v.estado==="Efectuada"?"#86efac":"var(--border)")+';background:'+(v.estado==="Efectuada"?"#dcfce7":"var(--card)")+';flex:1">'
+        +'<input type="radio" name="vis-edit-estado" value="Efectuada"'+(v.estado==="Efectuada"?" checked":"")+' style="accent-color:#16a34a"> ✅ Efectuada</label>'
+        +'<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;padding:10px;border-radius:8px;border:1.5px solid '+(v.estado==="Frustrada"?"#fecaca":"var(--border)")+';background:'+(v.estado==="Frustrada"?"#fee2e2":"var(--card)")+';flex:1">'
+        +'<input type="radio" name="vis-edit-estado" value="Frustrada"'+(v.estado==="Frustrada"?" checked":"")+' style="accent-color:#dc2626"> ❌ Frustrada</label>'
+        +'</div></div>'
+        +'<div class="form-group"><label class="lbl">Observación</label><textarea class="inp" id="vis-edit-obs" rows="2">'+(v.observacion||'')+'</textarea></div>'
+        +'<div style="display:flex;gap:8px">'
+        +'<button class="btn-primary" id="btn-vis-save-edit" data-id="'+v.id+'" style="flex:1">✓ Guardar</button>'
+        +'<button class="btn-cancel" id="btn-vis-cancel-edit" style="flex:1">Cancelar</button>'
+        +'</div></div>';
+    } else {
+      listaHtml+='<div class="obs-card">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(v.estudiante,36)
+        +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+v.estudiante+'</div>'
+        +'<div style="font-size:12px;color:var(--txt-soft)">'+v.curso+' · '+fmtFecha(v.fecha)+'</div></div>'
+        +'<span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:'+bg+';color:'+tc+';border:1px solid '+br+'">'+v.estado+'</span>'
+        +'</div>';
+      if(v.observacion) listaHtml+='<div style="font-size:13px;color:var(--txt-soft);padding:8px 12px;background:var(--sec-bg);border-radius:8px;margin-bottom:8px">'+v.observacion+'</div>';
+      listaHtml+='<div class="obs-btns">'
+        +'<button class="obs-btn-edit btn-primary" data-action="edit-visita" data-id="'+v.id+'">✏ Editar</button>'
+        +'<button class="btn-danger obs-btn-del" data-action="del-visita" data-id="'+v.id+'">🗑 Eliminar</button>'
+        +'</div></div>';
+    }
   });
   return '<div class="container">'
     +'<div class="card" style="margin-bottom:16px">'
@@ -909,6 +953,89 @@ function renderVisitas(){
     +'</div>'+listaHtml+'</div></div>';
 }
 
+// ── TAB COORDINACIONES ────────────────────────────────────────────────────────
+function renderCoordinaciones(){
+  var s=state.coord;
+  var cursosOpts='<option value="">Seleccionar...</option>';
+  cursos().forEach(function(c){ cursosOpts+='<option'+(c===s.curso?' selected':'')+'>'+c+'</option>'; });
+  var estOpts='<option value="">Seleccionar...</option>';
+  if(s.curso)(estudiantes[s.curso]||[]).forEach(function(e){ estOpts+='<option'+(e===s.estudiante?' selected':'')+'>'+e+'</option>'; });
+  var filtCOpts='<option value="">Todos los cursos</option>';
+  cursos().forEach(function(c){ filtCOpts+='<option'+(c===s.filtCurso?' selected':'')+'>'+c+'</option>'; });
+  var filtEOpts='<option value="">Todos</option>';
+  if(s.filtCurso)(estudiantes[s.filtCurso]||[]).forEach(function(e){ filtEOpts+='<option'+(e===s.filtEst?' selected':'')+'>'+e+'</option>'; });
+
+  var lista=coordinaciones.filter(function(c){
+    if(s.filtCurso&&c.curso!==s.filtCurso) return false;
+    if(s.filtEst&&c.estudiante!==s.filtEst) return false;
+    return true;
+  });
+
+  var listaHtml='';
+  if(!lista.length) listaHtml='<div class="empty"><div class="empty-icon">🤝</div><div class="empty-title">Sin coordinaciones registradas</div><div class="empty-sub">Agrega la primera coordinación</div></div>';
+  lista.forEach(function(c){
+    if(s.editId===c.id){
+      var eOpts='<option value="">Seleccionar...</option>';
+      (estudiantes[c.curso]||[]).forEach(function(x){ eOpts+='<option'+(x===c.estudiante?' selected':'')+'>'+x+'</option>'; });
+      listaHtml+='<div class="obs-card" style="border:2px solid #3b82f6">'
+        +'<p style="font-size:12px;font-weight:700;color:#3b82f6;margin-bottom:10px">✏ Editando coordinación</p>'
+        +'<div class="form-grid2" style="margin-bottom:10px">'
+        +'<div><label class="lbl">Fecha</label><input type="date" id="coord-edit-fecha" value="'+c.fecha+'"></div>'
+        +'<div><label class="lbl">Estudiante</label><select id="coord-edit-est">'+eOpts+'</select></div>'
+        +'</div>'
+        +'<div class="form-group"><label class="lbl">Nombre</label><input type="text" id="coord-edit-nombre" class="inp" value="'+(c.nombre||'')+'" placeholder="Nombre del profesional"></div>'
+        +'<div class="form-group"><label class="lbl">Programa / Institución</label><input type="text" id="coord-edit-programa" class="inp" value="'+(c.programa||'')+'" placeholder="Ej: OPD, CESFAM, PIE..."></div>'
+        +'<div style="display:flex;gap:8px">'
+        +'<button class="btn-primary" id="btn-coord-save-edit" data-id="'+c.id+'" style="flex:1">✓ Guardar</button>'
+        +'<button class="btn-cancel" id="btn-coord-cancel-edit" style="flex:1">Cancelar</button>'
+        +'</div></div>';
+    } else {
+      listaHtml+='<div class="obs-card">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(c.estudiante,36)
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:700;font-size:14px">'+c.estudiante+'</div>'
+        +'<div style="font-size:12px;color:var(--txt-soft)">'+c.curso+' · '+fmtFecha(c.fecha)+'</div>'
+        +'</div></div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+        +'<div style="padding:8px 12px;background:var(--sec-bg);border-radius:8px;border:1px solid var(--border)">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--txt-soft);text-transform:uppercase;margin-bottom:3px">Nombre</div>'
+        +'<div style="font-size:14px;font-weight:600;color:var(--txt)">'+c.nombre+'</div>'
+        +'</div>'
+        +'<div style="padding:8px 12px;background:var(--sec-bg);border-radius:8px;border:1px solid var(--border)">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--txt-soft);text-transform:uppercase;margin-bottom:3px">Programa / Institución</div>'
+        +'<div style="font-size:14px;font-weight:600;color:#1e3a5f">'+c.programa+'</div>'
+        +'</div></div>'
+        +'<div class="obs-btns">'
+        +'<button class="obs-btn-edit btn-primary" data-action="edit-coord" data-id="'+c.id+'">✏ Editar</button>'
+        +'<button class="btn-danger obs-btn-del" data-action="del-coord" data-id="'+c.id+'">🗑 Eliminar</button>'
+        +'</div></div>';
+    }
+  });
+
+  return '<div class="container">'
+    +'<div class="card" style="margin-bottom:16px">'
+    +'<div class="card-header"><h2 class="stitle">🤝 Coordinaciones</h2>'
+    +'<span style="font-size:13px;color:var(--txt-soft)">'+coordinaciones.length+' registro'+(coordinaciones.length!==1?'s':'')+'</span></div>'
+    +'<div style="background:var(--sec-bg);border-radius:10px;padding:16px;border:1px solid var(--border)">'
+    +'<p style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:12px">Nueva coordinación</p>'
+    +'<div class="form-grid2" style="margin-bottom:12px">'
+    +'<div><label class="lbl">Fecha</label><input type="date" id="coord-fecha" value="'+(s.fecha||hoy())+'"></div>'
+    +'<div><label class="lbl">Curso</label><select id="coord-curso">'+cursosOpts+'</select></div>'
+    +'</div>'
+    +'<div class="form-group"><label class="lbl">Estudiante</label><select id="coord-est"'+(s.curso?'':' disabled')+'>'+estOpts+'</select></div>'
+    +'<div class="form-group"><label class="lbl">Nombre</label><input type="text" id="coord-nombre" placeholder="Nombre del profesional o contacto" value="'+(s.nombre||'')+'"></div>'
+    +'<div class="form-group"><label class="lbl">Programa / Institución externa</label><input type="text" id="coord-programa" placeholder="Ej: OPD, CESFAM, PIE, SENDA..." value="'+(s.programa||'')+'"></div>'
+    +'<div id="alert-coord"></div>'
+    +'<button id="btn-guardar-coord" class="btn-primary btn-full" style="margin-top:8px">💾 Guardar coordinación</button>'
+    +'</div></div>'
+    +'<div class="card">'
+    +'<div class="card-header"><h2 class="stitle">Historial</h2></div>'
+    +'<div class="form-grid2" style="margin-bottom:16px">'
+    +'<div><label class="lbl">Curso</label><select id="coord-filt-curso">'+filtCOpts+'</select></div>'
+    +'<div><label class="lbl">Estudiante</label><select id="coord-filt-est"'+(s.filtCurso?'':' disabled')+'>'+filtEOpts+'</select></div>'
+    +'</div>'+listaHtml+'</div></div>';
+}
+
 // ── TAB ENTREVISTAS ───────────────────────────────────────────────────────────
 function renderEntrevistas(){
   var s=state.ent;
@@ -928,13 +1055,32 @@ function renderEntrevistas(){
   var listaHtml='';
   if(!lista.length) listaHtml='<div class="empty"><div class="empty-icon">🗣</div><div class="empty-title">Sin entrevistas registradas</div></div>';
   lista.forEach(function(e){
-    listaHtml+='<div class="obs-card">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(e.estudiante,36)
-      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+e.estudiante+'</div>'
-      +'<div style="font-size:12px;color:var(--txt-soft)">'+e.curso+' · '+fmtFecha(e.fecha)+(e.apoderado?' · <strong>'+e.apoderado+'</strong>':'')+'</div></div></div>';
-    if(e.observacion) listaHtml+='<div style="font-size:14px;color:var(--txt);padding:10px 12px;background:var(--sec-bg);border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;margin-bottom:8px;line-height:1.6">'+e.observacion+'</div>';
-    listaHtml+='<button class="btn-danger" data-action="del-entrevista" data-id="'+e.id+'" style="font-size:12px;padding:6px 12px">🗑 Eliminar</button>'
-      +'</div>';
+    if(s.editId===e.id){
+      var eOpts='<option value="">Seleccionar...</option>';
+      (estudiantes[e.curso]||[]).forEach(function(x){ eOpts+='<option'+(x===e.estudiante?' selected':'')+'>'+x+'</option>'; });
+      listaHtml+='<div class="obs-card" style="border:2px solid #3b82f6">'
+        +'<p style="font-size:12px;font-weight:700;color:#3b82f6;margin-bottom:10px">✏ Editando entrevista</p>'
+        +'<div class="form-grid2" style="margin-bottom:10px">'
+        +'<div><label class="lbl">Fecha</label><input type="date" id="ent-edit-fecha" value="'+e.fecha+'"></div>'
+        +'<div><label class="lbl">Estudiante</label><select id="ent-edit-est">'+eOpts+'</select></div>'
+        +'</div>'
+        +'<div class="form-group"><label class="lbl">Apoderado</label><input type="text" id="ent-edit-apoderado" class="inp" value="'+(e.apoderado||'')+'" placeholder="Nombre del apoderado"></div>'
+        +'<div class="form-group"><label class="lbl">Observación / Acuerdos</label><textarea class="inp" id="ent-edit-obs" rows="4">'+(e.observacion||'')+'</textarea></div>'
+        +'<div style="display:flex;gap:8px">'
+        +'<button class="btn-primary" id="btn-ent-save-edit" data-id="'+e.id+'" style="flex:1">✓ Guardar</button>'
+        +'<button class="btn-cancel" id="btn-ent-cancel-edit" style="flex:1">Cancelar</button>'
+        +'</div></div>';
+    } else {
+      listaHtml+='<div class="obs-card">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(e.estudiante,36)
+        +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+e.estudiante+'</div>'
+        +'<div style="font-size:12px;color:var(--txt-soft)">'+e.curso+' · '+fmtFecha(e.fecha)+(e.apoderado?' · <strong>'+e.apoderado+'</strong>':'')+'</div></div></div>';
+      if(e.observacion) listaHtml+='<div style="font-size:14px;color:var(--txt);padding:10px 12px;background:var(--sec-bg);border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;margin-bottom:8px;line-height:1.6">'+e.observacion+'</div>';
+      listaHtml+='<div class="obs-btns">'
+        +'<button class="obs-btn-edit btn-primary" data-action="edit-entrevista" data-id="'+e.id+'">✏ Editar</button>'
+        +'<button class="btn-danger obs-btn-del" data-action="del-entrevista" data-id="'+e.id+'">🗑 Eliminar</button>'
+        +'</div></div>';
+    }
   });
   return '<div class="container">'
     +'<div class="card" style="margin-bottom:16px">'
@@ -1016,8 +1162,8 @@ function renderFichas(){
       +'<div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #e2e8f0">'
       +'<p style="font-weight:700;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Diagnosticos</p>'
       +'<div class="form-grid2">'
-      +'<div><label class="lbl">Diagnostico Psicologico</label><textarea class="inp" id="f-diag-psico" rows="3" placeholder="Descripcion...">'+(f.diagPsico||"")+'</textarea></div>'
-      +'<div><label class="lbl">Diagnostico Medico</label><textarea class="inp" id="f-diag-medico" rows="3" placeholder="Descripcion...">'+(f.diagMedico||"")+'</textarea></div>'
+      +'<div><label class="lbl">Diagnostico</label><textarea class="inp" id="f-diag-psico" rows="3" placeholder="Descripcion...">'+(f.diagPsico||"")+'</textarea></div>'
+      +'<div><label class="lbl">Antecedentes Relevantes</label><textarea class="inp" id="f-diag-medico" rows="3" placeholder="Descripcion...">'+(f.diagMedico||"")+'</textarea></div>'
       +'</div></div>'
       +'<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
       +'<button id="btn-save-ficha" class="btn-primary" style="flex:1;min-width:140px">💾 Guardar ficha</button>'
@@ -1195,15 +1341,15 @@ function generarPDF(est){
     // DIAGNOSTICOS
     +"<div class='seccion'><div class='sec-title'>Diagnosticos</div>"
     +"<div class='grid2'>"
-    +"<div><div class='field-lbl'>Diagnostico Psicologico</div><div class='field-val' style='min-height:70px;line-height:1.6'>"+(f.diagPsico||"—")+"</div></div>"
-    +"<div><div class='field-lbl'>Diagnostico Medico</div><div class='field-val' style='min-height:70px;line-height:1.6'>"+(f.diagMedico||"—")+"</div></div>"
+    +"<div><div class='field-lbl'>Diagnostico</div><div class='field-val' style='min-height:70px;line-height:1.6'>"+(f.diagPsico||"—")+"</div></div>"
+    +"<div><div class='field-lbl'>Antecedentes Relevantes</div><div class='field-val' style='min-height:70px;line-height:1.6'>"+(f.diagMedico||"—")+"</div></div>"
     +"</div></div>"
 
     +resBlock
     +sesionesBlock
 
     +"<div style='margin-top:30px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center'>"
-    +"Sistema de Observacion Aula Psicosocial &nbsp;&middot;&nbsp; "+new Date().toLocaleDateString("es-CL",{year:"numeric",month:"long",day:"numeric"})
+    +"Sistema de Registro Psicosocial-TS &nbsp;&middot;&nbsp; "+new Date().toLocaleDateString("es-CL",{year:"numeric",month:"long",day:"numeric"})
     +"</div>"
     +"<sc"+"ript>window.onload=function(){window.print();};</sc"+"ript>"
     +"</body></html>";
@@ -1708,6 +1854,93 @@ function attachEvents(){
         });
       };
     });
+    document.querySelectorAll("[data-action='edit-visita']").forEach(function(btn){
+      btn.onclick=function(){ state.vis.editId=btn.dataset.id; render(); };
+    });
+    var btnVisSave=document.getElementById("btn-vis-save-edit");
+    if(btnVisSave) btnVisSave.onclick=function(){
+      var id=this.dataset.id;
+      var v=visitas.find(function(x){ return x.id===id; });
+      if(!v) return;
+      var fecha=document.getElementById("vis-edit-fecha").value;
+      var est=document.getElementById("vis-edit-est").value;
+      var estadoEl=document.querySelector("input[name='vis-edit-estado']:checked");
+      var estado=estadoEl?estadoEl.value:v.estado;
+      var obs=document.getElementById("vis-edit-obs").value;
+      if(!fecha||!est){ alert("⚠ Completa fecha y estudiante."); return; }
+      v.fecha=fecha; v.estudiante=est; v.estado=estado; v.observacion=obs;
+      guardarVisitaFS(v);
+      state.vis.editId=null; render();
+    };
+    var btnVisCancelEdit=document.getElementById("btn-vis-cancel-edit");
+    if(btnVisCancelEdit) btnVisCancelEdit.onclick=function(){ state.vis.editId=null; render(); };
+  }
+
+  // COORDINACIONES
+  if(state.tab==="coordinaciones"){
+    var coordC=document.getElementById("coord-curso");
+    if(coordC) coordC.onchange=function(){ state.coord.curso=this.value; state.coord.estudiante=""; render(); };
+    var coordE=document.getElementById("coord-est");
+    if(coordE) coordE.onchange=function(){ state.coord.estudiante=this.value; };
+    var coordF=document.getElementById("coord-fecha");
+    if(coordF) coordF.onchange=function(){ state.coord.fecha=this.value; };
+    var coordN=document.getElementById("coord-nombre");
+    if(coordN) coordN.oninput=function(){ state.coord.nombre=this.value; };
+    var coordP=document.getElementById("coord-programa");
+    if(coordP) coordP.oninput=function(){ state.coord.programa=this.value; };
+    var coordFiltC=document.getElementById("coord-filt-curso");
+    if(coordFiltC) coordFiltC.onchange=function(){ state.coord.filtCurso=this.value; state.coord.filtEst=""; render(); };
+    var coordFiltE=document.getElementById("coord-filt-est");
+    if(coordFiltE) coordFiltE.onchange=function(){ state.coord.filtEst=this.value; render(); };
+    var btnCoordGuardar=document.getElementById("btn-guardar-coord");
+    if(btnCoordGuardar) btnCoordGuardar.onclick=function(){
+      var alDiv=document.getElementById("alert-coord");
+      var fecha=(document.getElementById("coord-fecha")||{}).value||state.coord.fecha||hoy();
+      var nombre=(document.getElementById("coord-nombre")||{}).value||"";
+      var programa=(document.getElementById("coord-programa")||{}).value||"";
+      if(!state.coord.curso||!state.coord.estudiante){
+        alDiv.innerHTML='<div class="alert alert-err">⚠ Selecciona curso y estudiante.</div>'; return;
+      }
+      if(!nombre.trim()){
+        alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe el nombre.</div>'; return;
+      }
+      if(!programa.trim()){
+        alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe el programa o institución.</div>'; return;
+      }
+      var nueva={id:Date.now().toString(),fecha:fecha,curso:state.coord.curso,estudiante:state.coord.estudiante,nombre:nombre,programa:programa};
+      guardarCoordFS(nueva);
+      state.coord.estudiante=""; state.coord.nombre=""; state.coord.programa=""; state.coord.fecha="";
+      alDiv.innerHTML='<div class="alert alert-ok">✅ Coordinación guardada correctamente</div>';
+      render();
+    };
+    document.querySelectorAll("[data-action='del-coord']").forEach(function(btn){
+      btn.onclick=function(){
+        var c=coordinaciones.find(function(x){ return x.id===btn.dataset.id; });
+        if(!c) return;
+        showModal("Eliminar coordinación","¿Eliminar la coordinación de <strong>"+c.estudiante+"</strong> con <strong>"+c.programa+"</strong>?",function(){
+          eliminarCoordFS(btn.dataset.id);
+        });
+      };
+    });
+    document.querySelectorAll("[data-action='edit-coord']").forEach(function(btn){
+      btn.onclick=function(){ state.coord.editId=btn.dataset.id; render(); };
+    });
+    var btnCoordSave=document.getElementById("btn-coord-save-edit");
+    if(btnCoordSave) btnCoordSave.onclick=function(){
+      var id=this.dataset.id;
+      var c=coordinaciones.find(function(x){ return x.id===id; });
+      if(!c) return;
+      var fecha=document.getElementById("coord-edit-fecha").value;
+      var est=document.getElementById("coord-edit-est").value;
+      var nombre=document.getElementById("coord-edit-nombre").value;
+      var programa=document.getElementById("coord-edit-programa").value;
+      if(!fecha||!est||!nombre||!programa){ alert("⚠ Completa todos los campos."); return; }
+      c.fecha=fecha; c.estudiante=est; c.nombre=nombre; c.programa=programa;
+      guardarCoordFS(c);
+      state.coord.editId=null; render();
+    };
+    var btnCoordCancel=document.getElementById("btn-coord-cancel-edit");
+    if(btnCoordCancel) btnCoordCancel.onclick=function(){ state.coord.editId=null; render(); };
   }
 
   // ENTREVISTAS
@@ -1752,6 +1985,25 @@ function attachEvents(){
         });
       };
     });
+    document.querySelectorAll("[data-action='edit-entrevista']").forEach(function(btn){
+      btn.onclick=function(){ state.ent.editId=btn.dataset.id; render(); };
+    });
+    var btnEntSave=document.getElementById("btn-ent-save-edit");
+    if(btnEntSave) btnEntSave.onclick=function(){
+      var id=this.dataset.id;
+      var e=entrevistas.find(function(x){ return x.id===id; });
+      if(!e) return;
+      var fecha=document.getElementById("ent-edit-fecha").value;
+      var est=document.getElementById("ent-edit-est").value;
+      var apo=document.getElementById("ent-edit-apoderado").value;
+      var obs=document.getElementById("ent-edit-obs").value;
+      if(!fecha||!est){ alert("⚠ Completa fecha y estudiante."); return; }
+      e.fecha=fecha; e.estudiante=est; e.apoderado=apo; e.observacion=obs;
+      guardarEntrevistaFS(e);
+      state.ent.editId=null; render();
+    };
+    var btnEntCancelEdit=document.getElementById("btn-ent-cancel-edit");
+    if(btnEntCancelEdit) btnEntCancelEdit.onclick=function(){ state.ent.editId=null; render(); };
   }
 }
 
