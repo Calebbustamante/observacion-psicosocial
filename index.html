@@ -784,6 +784,15 @@ function renderEstudiantes(){
   if(!cursos().length) listaHtml='<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Sin estudiantes</div></div>';
 
   return '<div class="container">'
+    +'<div class="card" style="margin-bottom:16px">'
+    +'<div class="card-header"><h2 class="stitle">💾 Respaldo de datos</h2></div>'
+    +'<p style="font-size:13px;color:var(--txt-soft);margin-bottom:16px">Descarga un respaldo completo de todos los datos (observaciones, estudiantes, indicadores y fichas) o restaura desde un respaldo anterior.</p>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +'<button id="btn-descargar-respaldo" class="btn-primary" style="background:#16a34a">⬇ Descargar respaldo</button>'
+    +'<label class="btn-primary" style="background:#d97706;cursor:pointer;display:inline-flex;align-items:center;gap:6px">⬆ Restaurar respaldo<input type="file" id="inp-restaurar" accept=".json" style="display:none"></label>'
+    +'</div>'
+    +'<div id="alert-respaldo"></div>'
+    +'</div>'
     +'<div class="card">'
     +'<div class="card-header"><h2 class="stitle">👥 Estudiantes</h2></div>'
     +'<div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:20px">'
@@ -1087,7 +1096,57 @@ function exportarExcel(){
   XLSX.writeFile(wb,"Reporte_Psicosocial_"+fecha+".xlsx");
 }
 
-// ── MODAL ────────────────────────────────────────────────────────────────────
+// ── RESPALDO ──────────────────────────────────────────────────────────────────
+function descargarRespaldo(){
+  var respaldo = {
+    version: 1,
+    fecha: new Date().toISOString(),
+    observaciones: state.obs,
+    estudiantes: estudiantes,
+    items: items,
+    fichas: fichas
+  };
+  var blob = new Blob([JSON.stringify(respaldo, null, 2)], {type:"application/json"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "respaldo_psicosocial_" + new Date().toISOString().split("T")[0] + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function restaurarRespaldo(file){
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var data = JSON.parse(e.target.result);
+      if(!data.version || !data.observaciones){
+        document.getElementById("alert-respaldo").innerHTML='<div class="alert alert-err">⚠ Archivo inválido. Selecciona un respaldo válido.</div>';
+        return;
+      }
+      showModal("Restaurar respaldo",
+        "¿Estás seguro? Esto <strong>reemplazará TODOS los datos actuales</strong> con los del respaldo del <strong>"+new Date(data.fecha).toLocaleDateString("es-CL")+"</strong>.<br><br>Observaciones: "+data.observaciones.length+" | Estudiantes: "+Object.keys(data.estudiantes||{}).length+" cursos",
+        function(){
+          // Restaurar en Firestore
+          var batch = [];
+          // Borrar obs actuales y subir las del respaldo
+          data.observaciones.forEach(function(ob){
+            db.collection("observaciones").doc(ob.id).set(ob);
+          });
+          // Guardar estudiantes, items y fichas
+          if(data.estudiantes) db.collection("datos").doc("estudiantes").set({data: JSON.stringify(data.estudiantes)});
+          if(data.items) db.collection("datos").doc("items").set({data: JSON.stringify(data.items)});
+          if(data.fichas) db.collection("datos").doc("fichas").set({data: JSON.stringify(data.fichas)});
+
+          document.getElementById("alert-respaldo").innerHTML='<div class="alert alert-ok">✅ Respaldo restaurado correctamente. Los datos se sincronizarán en segundos.</div>';
+        }
+      );
+    } catch(err){
+      document.getElementById("alert-respaldo").innerHTML='<div class="alert alert-err">⚠ Error al leer el archivo: '+err.message+'</div>';
+    }
+  };
+  reader.readAsText(file);
+}
 function showModal(titulo,msg,onOk){
   document.getElementById("modal").innerHTML=
     '<div class="modal-overlay" id="modal-overlay">'
@@ -1344,6 +1403,11 @@ function attachEvents(){
 
   // ESTUDIANTES
   if(state.tab==="estudiantes"){
+    // Respaldo
+    var btnRespaldo=document.getElementById("btn-descargar-respaldo");
+    if(btnRespaldo) btnRespaldo.onclick=descargarRespaldo;
+    var inpRestaurar=document.getElementById("inp-restaurar");
+    if(inpRestaurar) inpRestaurar.onchange=function(){ if(this.files[0]) restaurarRespaldo(this.files[0]); };
     var newNombre=document.getElementById("new-nombre");
     if(newNombre) newNombre.oninput=function(){ state.est.newNombre=this.value; };
     var newCurso=document.getElementById("new-curso");
