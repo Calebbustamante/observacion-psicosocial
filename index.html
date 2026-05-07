@@ -232,6 +232,8 @@ textarea.inp{resize:vertical}
   <button class="nav-btn active" data-tab="registro"><span class="nav-icon">📝</span><span class="nav-label">Registro</span></button>
   <button class="nav-btn" data-tab="reportes"><span class="nav-icon">📊</span><span class="nav-label">Reportes</span></button>
   <button class="nav-btn" data-tab="dashboard"><span class="nav-icon">🎯</span><span class="nav-label">Dashboard</span></button>
+  <button class="nav-btn" data-tab="visitas"><span class="nav-icon">🏠</span><span class="nav-label">Visitas</span></button>
+  <button class="nav-btn" data-tab="entrevistas"><span class="nav-icon">🗣</span><span class="nav-label">Entrevistas</span></button>
   <button class="nav-btn" data-tab="estudiantes"><span class="nav-icon">👥</span><span class="nav-label">Alumnos</span></button>
   <button class="nav-btn" data-tab="fichas"><span class="nav-icon">📄</span><span class="nav-label">Fichas</span></button>
   <button class="btn-theme" id="btn-tema">🌙 Modo noche</button>
@@ -311,11 +313,15 @@ var state = {
   rep: { curso:"", estudiante:"", editId:null, editResp:{}, editFecha:"" },
   dash: { filtro:"" },
   est: { newNombre:"", newCurso:"", newCursoCustom:"" },
-  fichas: { curso:"", estudiante:"" }
+  fichas: { curso:"", estudiante:"" },
+  vis: { fecha:"", curso:"", estudiante:"", estado:"Efectuada", filtCurso:"", filtEst:"" },
+  ent: { fecha:"", curso:"", estudiante:"", observacion:"", filtCurso:"", filtEst:"" }
 };
 var estudiantes = {};
 var items = [];
 var fichas = {};
+var visitas = [];
+var entrevistas = [];
 
 // ── FIREBASE CONFIG ───────────────────────────────────────────────────────────
 // ⚠️ REEMPLAZA ESTOS VALORES con los de tu proyecto Firebase:
@@ -375,6 +381,16 @@ function guardarFichas(){
   localStorage.setItem("psicosocial_fichas",JSON.stringify(fichas));
   db.collection("datos").doc("fichas").set({data: JSON.stringify(fichas)});
 }
+function guardarVisitaFS(v){
+  db.collection("visitas").doc(v.id).set(v)
+    .catch(function(err){ console.error("Error visita:", err); });
+}
+function eliminarVisitaFS(id){ db.collection("visitas").doc(id).delete(); }
+function guardarEntrevistaFS(e){
+  db.collection("entrevistas").doc(e.id).set(e)
+    .catch(function(err){ console.error("Error entrevista:", err); });
+}
+function eliminarEntrevistaFS(id){ db.collection("entrevistas").doc(id).delete(); }
 
 // ── LISTENERS TIEMPO REAL ─────────────────────────────────────────────────────
 function iniciarListeners(){
@@ -417,6 +433,24 @@ function iniciarListeners(){
       render();
     }
   });
+
+  // Visitas en tiempo real
+  db.collection("visitas").onSnapshot(function(snap){
+    visitas = [];
+    snap.forEach(function(doc){ visitas.push(doc.data()); });
+    visitas.sort(function(a,b){ return b.fecha > a.fecha ? 1 : -1; });
+    if(state.tab==="visitas") render();
+    mostrarIndicadorSync("✅ Sincronizado");
+  }, function(err){ console.error("Error visitas:", err); });
+
+  // Entrevistas en tiempo real
+  db.collection("entrevistas").onSnapshot(function(snap){
+    entrevistas = [];
+    snap.forEach(function(doc){ entrevistas.push(doc.data()); });
+    entrevistas.sort(function(a,b){ return b.fecha > a.fecha ? 1 : -1; });
+    if(state.tab==="entrevistas") render();
+    mostrarIndicadorSync("✅ Sincronizado");
+  }, function(err){ console.error("Error entrevistas:", err); });
 }
 
 function mostrarIndicadorSync(msg){
@@ -465,6 +499,8 @@ function render(){
   else if(state.tab==="dashboard") html=renderDashboard();
   else if(state.tab==="estudiantes") html=renderEstudiantes();
   else if(state.tab==="fichas") html=renderFichas();
+  else if(state.tab==="visitas") html=renderVisitas();
+  else if(state.tab==="entrevistas") html=renderEntrevistas();
   document.getElementById("content").innerHTML=html;
   attachEvents();
 }
@@ -807,6 +843,118 @@ function renderEstudiantes(){
     +'</div>'
     +listaHtml
     +'</div></div>';
+}
+
+// ── TAB VISITAS ───────────────────────────────────────────────────────────────
+function renderVisitas(){
+  var s=state.vis;
+  var cursosOpts='<option value="">Seleccionar...</option>';
+  cursos().forEach(function(c){ cursosOpts+='<option'+(c===s.curso?' selected':'')+'>'+c+'</option>'; });
+  var estOpts='<option value="">Seleccionar...</option>';
+  if(s.curso)(estudiantes[s.curso]||[]).forEach(function(e){ estOpts+='<option'+(e===s.estudiante?' selected':'')+'>'+e+'</option>'; });
+  var filtCOpts='<option value="">Todos los cursos</option>';
+  cursos().forEach(function(c){ filtCOpts+='<option'+(c===s.filtCurso?' selected':'')+'>'+c+'</option>'; });
+  var filtEOpts='<option value="">Todos</option>';
+  if(s.filtCurso)(estudiantes[s.filtCurso]||[]).forEach(function(e){ filtEOpts+='<option'+(e===s.filtEst?' selected':'')+'>'+e+'</option>'; });
+  var lista=visitas.filter(function(v){
+    if(s.filtCurso&&v.curso!==s.filtCurso) return false;
+    if(s.filtEst&&v.estudiante!==s.filtEst) return false;
+    return true;
+  });
+  var listaHtml='';
+  if(!lista.length) listaHtml='<div class="empty"><div class="empty-icon">🏠</div><div class="empty-title">Sin visitas registradas</div></div>';
+  lista.forEach(function(v){
+    var ef=v.estado==="Efectuada";
+    var bg=ef?"#dcfce7":"#fee2e2"; var tc=ef?"#166534":"#991b1b"; var br=ef?"#86efac":"#fecaca";
+    listaHtml+='<div class="obs-card">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(v.estudiante,36)
+      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+v.estudiante+'</div>'
+      +'<div style="font-size:12px;color:var(--txt-soft)">'+v.curso+' · '+fmtFecha(v.fecha)+'</div></div>'
+      +'<span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:'+bg+';color:'+tc+';border:1px solid '+br+'">'+v.estado+'</span>'
+      +'</div>';
+    if(v.observacion) listaHtml+='<div style="font-size:13px;color:var(--txt-soft);padding:8px 12px;background:var(--sec-bg);border-radius:8px;margin-bottom:8px">'+v.observacion+'</div>';
+    listaHtml+='<button class="btn-danger" data-action="del-visita" data-id="'+v.id+'" style="font-size:12px;padding:6px 12px">🗑 Eliminar</button>'
+      +'</div>';
+  });
+  return '<div class="container">'
+    +'<div class="card" style="margin-bottom:16px">'
+    +'<div class="card-header"><h2 class="stitle">🏠 Visitas Domiciliarias</h2>'
+    +'<span style="font-size:13px;color:var(--txt-soft)">'+visitas.length+' visita'+(visitas.length!==1?'s':'')+'</span></div>'
+    +'<div style="background:var(--sec-bg);border-radius:10px;padding:16px;border:1px solid var(--border);margin-bottom:0">'
+    +'<p style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:12px">Nueva visita</p>'
+    +'<div class="form-grid2" style="margin-bottom:12px">'
+    +'<div><label class="lbl">Fecha</label><input type="date" id="vis-fecha" value="'+(s.fecha||hoy())+'"></div>'
+    +'<div><label class="lbl">Curso</label><select id="vis-curso">'+cursosOpts+'</select></div>'
+    +'</div>'
+    +'<div class="form-group"><label class="lbl">Estudiante</label><select id="vis-est"'+(s.curso?'':' disabled')+'>'+estOpts+'</select></div>'
+    +'<div class="form-group"><label class="lbl">Estado de la visita</label>'
+    +'<div style="display:flex;gap:10px;margin-top:4px">'
+    +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:12px 16px;border-radius:8px;border:1.5px solid '+(s.estado==="Efectuada"?"#86efac":"var(--border)")+';background:'+(s.estado==="Efectuada"?"#dcfce7":"var(--card)")+';flex:1">'
+    +'<input type="radio" name="vis-estado" value="Efectuada"'+(s.estado==="Efectuada"?" checked":"")+' style="accent-color:#16a34a;width:18px;height:18px"> ✅ Efectuada</label>'
+    +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:12px 16px;border-radius:8px;border:1.5px solid '+(s.estado==="Frustrada"?"#fecaca":"var(--border)")+';background:'+(s.estado==="Frustrada"?"#fee2e2":"var(--card)")+';flex:1">'
+    +'<input type="radio" name="vis-estado" value="Frustrada"'+(s.estado==="Frustrada"?" checked":"")+' style="accent-color:#dc2626;width:18px;height:18px"> ❌ Frustrada</label>'
+    +'</div></div>'
+    +'<div class="form-group"><label class="lbl">Observación (opcional)</label><textarea class="inp" id="vis-obs" rows="2" placeholder="Notas de la visita...">'+(s.observacion||'')+'</textarea></div>'
+    +'<div id="alert-vis"></div>'
+    +'<button id="btn-guardar-vis" class="btn-primary btn-full" style="margin-top:8px">💾 Guardar visita</button>'
+    +'</div></div>'
+    +'<div class="card">'
+    +'<div class="card-header"><h2 class="stitle">Historial</h2></div>'
+    +'<div class="form-grid2" style="margin-bottom:16px">'
+    +'<div><label class="lbl">Curso</label><select id="vis-filt-curso">'+filtCOpts+'</select></div>'
+    +'<div><label class="lbl">Estudiante</label><select id="vis-filt-est"'+(s.filtCurso?'':' disabled')+'>'+filtEOpts+'</select></div>'
+    +'</div>'+listaHtml+'</div></div>';
+}
+
+// ── TAB ENTREVISTAS ───────────────────────────────────────────────────────────
+function renderEntrevistas(){
+  var s=state.ent;
+  var cursosOpts='<option value="">Seleccionar...</option>';
+  cursos().forEach(function(c){ cursosOpts+='<option'+(c===s.curso?' selected':'')+'>'+c+'</option>'; });
+  var estOpts='<option value="">Seleccionar...</option>';
+  if(s.curso)(estudiantes[s.curso]||[]).forEach(function(e){ estOpts+='<option'+(e===s.estudiante?' selected':'')+'>'+e+'</option>'; });
+  var filtCOpts='<option value="">Todos los cursos</option>';
+  cursos().forEach(function(c){ filtCOpts+='<option'+(c===s.filtCurso?' selected':'')+'>'+c+'</option>'; });
+  var filtEOpts='<option value="">Todos</option>';
+  if(s.filtCurso)(estudiantes[s.filtCurso]||[]).forEach(function(e){ filtEOpts+='<option'+(e===s.filtEst?' selected':'')+'>'+e+'</option>'; });
+  var lista=entrevistas.filter(function(e){
+    if(s.filtCurso&&e.curso!==s.filtCurso) return false;
+    if(s.filtEst&&e.estudiante!==s.filtEst) return false;
+    return true;
+  });
+  var listaHtml='';
+  if(!lista.length) listaHtml='<div class="empty"><div class="empty-icon">🗣</div><div class="empty-title">Sin entrevistas registradas</div></div>';
+  lista.forEach(function(e){
+    listaHtml+='<div class="obs-card">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+htmlAvatar(e.estudiante,36)
+      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">'+e.estudiante+'</div>'
+      +'<div style="font-size:12px;color:var(--txt-soft)">'+e.curso+' · '+fmtFecha(e.fecha)+(e.apoderado?' · <strong>'+e.apoderado+'</strong>':'')+'</div></div></div>';
+    if(e.observacion) listaHtml+='<div style="font-size:14px;color:var(--txt);padding:10px 12px;background:var(--sec-bg);border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;margin-bottom:8px;line-height:1.6">'+e.observacion+'</div>';
+    listaHtml+='<button class="btn-danger" data-action="del-entrevista" data-id="'+e.id+'" style="font-size:12px;padding:6px 12px">🗑 Eliminar</button>'
+      +'</div>';
+  });
+  return '<div class="container">'
+    +'<div class="card" style="margin-bottom:16px">'
+    +'<div class="card-header"><h2 class="stitle">🗣 Entrevistas de Apoderado</h2>'
+    +'<span style="font-size:13px;color:var(--txt-soft)">'+entrevistas.length+' entrevista'+(entrevistas.length!==1?'s':'')+'</span></div>'
+    +'<div style="background:var(--sec-bg);border-radius:10px;padding:16px;border:1px solid var(--border)">'
+    +'<p style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:12px">Nueva entrevista</p>'
+    +'<div class="form-grid2" style="margin-bottom:12px">'
+    +'<div><label class="lbl">Fecha</label><input type="date" id="ent-fecha" value="'+(s.fecha||hoy())+'"></div>'
+    +'<div><label class="lbl">Curso</label><select id="ent-curso">'+cursosOpts+'</select></div>'
+    +'</div>'
+    +'<div class="form-group"><label class="lbl">Estudiante</label><select id="ent-est"'+(s.curso?'':' disabled')+'>'+estOpts+'</select></div>'
+    +'<div class="form-group"><label class="lbl">Nombre del apoderado (opcional)</label><input type="text" id="ent-apoderado" placeholder="Nombre del apoderado" value="'+(s.apoderado||'')+'"></div>'
+    +'<div class="form-group"><label class="lbl">Observación / Acuerdos</label><textarea class="inp" id="ent-obs" rows="4" placeholder="Describe los temas tratados, acuerdos y compromisos...">'+(s.observacion||'')+'</textarea></div>'
+    +'<div id="alert-ent"></div>'
+    +'<button id="btn-guardar-ent" class="btn-primary btn-full" style="margin-top:8px">💾 Guardar entrevista</button>'
+    +'</div></div>'
+    +'<div class="card">'
+    +'<div class="card-header"><h2 class="stitle">Historial</h2></div>'
+    +'<div class="form-grid2" style="margin-bottom:16px">'
+    +'<div><label class="lbl">Curso</label><select id="ent-filt-curso">'+filtCOpts+'</select></div>'
+    +'<div><label class="lbl">Estudiante</label><select id="ent-filt-est"'+(s.filtCurso?'':' disabled')+'>'+filtEOpts+'</select></div>'
+    +'</div>'+listaHtml+'</div></div>';
 }
 
 // ── TAB FICHAS ───────────────────────────────────────────────────────────────
@@ -1229,24 +1377,37 @@ function attachEvents(){
         html+='</div></div>';
       });
       html+='</div>'
-        +'<div style="display:flex;gap:8px;margin-bottom:14px;flex-shrink:0">'
-        +'<input type="text" id="new-item-nombre" placeholder="Nombre del indicador" style="flex:1;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px">'
-        +'<select id="new-item-tipo" style="padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px"><option value="Positivo">Positivo</option><option value="Alerta">Alerta</option></select>'
-        +'<button class="btn-primary" id="btn-add-item" style="font-size:12px">+</button>'
+        +'<div style="display:flex;gap:8px;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap">'
+        +'<input type="text" id="new-item-nombre" placeholder="Nombre del indicador" style="flex:2;min-width:160px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px">'
+        +'<input type="text" id="new-item-seccion" placeholder="Sección (ej: Participacion)" style="flex:2;min-width:140px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px">'
+        +'<select id="new-item-tipo" style="flex:1;min-width:100px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px"><option value="Positivo">Positivo</option><option value="Alerta">Alerta</option></select>'
+        +'<button class="btn-primary" id="btn-add-item" style="font-size:13px;padding:8px 14px">+ Agregar</button>'
         +'</div>'
+        +'<div id="alert-add-item" style="margin-bottom:8px"></div>'
         +'<div style="text-align:right;flex-shrink:0"><button class="btn-cancel" id="modal-cancel" style="border:none">Cerrar</button></div>'
         +'</div></div>';
       document.getElementById("modal").innerHTML=html;
       document.getElementById("modal-cancel").onclick=function(){ document.getElementById("modal").innerHTML=""; render(); };
       document.getElementById("modal-overlay").onclick=function(e){ if(e.target===this){ document.getElementById("modal").innerHTML=""; render(); } };
       document.getElementById("btn-add-item").onclick=function(){
-        var n=document.getElementById("new-item-nombre").value.trim();
+        var n=(document.getElementById("new-item-nombre").value||"").trim();
+        var sec=(document.getElementById("new-item-seccion").value||"").trim();
         var t=document.getElementById("new-item-tipo").value;
-        if(!n) return;
-        if(items.find(function(x){ return x.nombre===n; })){ alert("Ya existe ese indicador."); return; }
-        items.push({nombre:n,tipo:t});
+        var alDiv=document.getElementById("alert-add-item");
+        if(!n){ alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe el nombre del indicador.</div>'; return; }
+        if(!sec){ alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe el nombre de la sección.</div>'; return; }
+        if(items.find(function(x){ return x.nombre===n; })){ alDiv.innerHTML='<div class="alert alert-err">⚠ Ya existe ese indicador.</div>'; return; }
+        items.push({nombre:n, tipo:t, seccion:sec});
         guardarItems();
-        document.getElementById("modal").innerHTML=""; render();
+        document.getElementById("new-item-nombre").value="";
+        document.getElementById("new-item-seccion").value="";
+        alDiv.innerHTML='<div class="alert alert-ok">✓ Indicador "'+n+'" agregado.</div>';
+        // Actualizar lista sin cerrar el modal
+        setTimeout(function(){
+          document.getElementById("modal").innerHTML=""; render();
+          // Reabrir panel
+          document.getElementById("btn-indicadores") && document.getElementById("btn-indicadores").click();
+        },600);
       };
       document.querySelectorAll("[data-action='del-item']").forEach(function(btn){
         btn.onclick=function(){
@@ -1380,8 +1541,6 @@ function attachEvents(){
       var alDiv=document.getElementById("alert-edit");
       var newFecha=document.getElementById("edit-fecha").value;
       if(!newFecha){ alDiv.innerHTML='<div class="alert alert-err">⚠ Selecciona una fecha.</div>'; return; }
-      var falt=items.filter(function(it){ return !state.rep.editResp[it.nombre]; });
-      if(falt.length){ alDiv.innerHTML='<div class="alert alert-err">⚠ Faltan: '+falt.map(function(x){ return x.nombre; }).join(", ")+'</div>'; return; }
       var id=btnSaveEdit.dataset.id;
       var obs=state.obs.find(function(o){ return o.id===id; });
       if(obs){
@@ -1482,6 +1641,91 @@ function attachEvents(){
       saveFicha();
       generarPDF(state.fichas.estudiante);
     };
+  }
+
+  // VISITAS
+  if(state.tab==="visitas"){
+    var visC=document.getElementById("vis-curso");
+    if(visC) visC.onchange=function(){ state.vis.curso=this.value; state.vis.estudiante=""; render(); };
+    var visE=document.getElementById("vis-est");
+    if(visE) visE.onchange=function(){ state.vis.estudiante=this.value; };
+    var visFecha=document.getElementById("vis-fecha");
+    if(visFecha) visFecha.onchange=function(){ state.vis.fecha=this.value; };
+    var visObs=document.getElementById("vis-obs");
+    if(visObs) visObs.oninput=function(){ state.vis.observacion=this.value; };
+    document.querySelectorAll("input[name='vis-estado']").forEach(function(r){
+      r.onchange=function(){ state.vis.estado=this.value; render(); };
+    });
+    var visFiltC=document.getElementById("vis-filt-curso");
+    if(visFiltC) visFiltC.onchange=function(){ state.vis.filtCurso=this.value; state.vis.filtEst=""; render(); };
+    var visFiltE=document.getElementById("vis-filt-est");
+    if(visFiltE) visFiltE.onchange=function(){ state.vis.filtEst=this.value; render(); };
+    var btnVisGuardar=document.getElementById("btn-guardar-vis");
+    if(btnVisGuardar) btnVisGuardar.onclick=function(){
+      var alDiv=document.getElementById("alert-vis");
+      var fecha=(document.getElementById("vis-fecha")||{}).value||state.vis.fecha||hoy();
+      if(!state.vis.curso||!state.vis.estudiante){
+        alDiv.innerHTML='<div class="alert alert-err">⚠ Selecciona curso y estudiante.</div>'; return;
+      }
+      var nueva={id:Date.now().toString(),fecha:fecha,curso:state.vis.curso,estudiante:state.vis.estudiante,estado:state.vis.estado||"Efectuada",observacion:(document.getElementById("vis-obs")||{}).value||""};
+      guardarVisitaFS(nueva);
+      state.vis.estudiante=""; state.vis.observacion=""; state.vis.fecha="";
+      alDiv.innerHTML='<div class="alert alert-ok">✅ Visita guardada correctamente</div>';
+      render();
+    };
+    document.querySelectorAll("[data-action='del-visita']").forEach(function(btn){
+      btn.onclick=function(){
+        var v=visitas.find(function(x){ return x.id===btn.dataset.id; });
+        if(!v) return;
+        showModal("Eliminar visita","¿Eliminar la visita de <strong>"+v.estudiante+"</strong> del "+fmtFecha(v.fecha)+"?",function(){
+          eliminarVisitaFS(btn.dataset.id);
+        });
+      };
+    });
+  }
+
+  // ENTREVISTAS
+  if(state.tab==="entrevistas"){
+    var entC=document.getElementById("ent-curso");
+    if(entC) entC.onchange=function(){ state.ent.curso=this.value; state.ent.estudiante=""; render(); };
+    var entE=document.getElementById("ent-est");
+    if(entE) entE.onchange=function(){ state.ent.estudiante=this.value; };
+    var entFecha=document.getElementById("ent-fecha");
+    if(entFecha) entFecha.onchange=function(){ state.ent.fecha=this.value; };
+    var entApo=document.getElementById("ent-apoderado");
+    if(entApo) entApo.oninput=function(){ state.ent.apoderado=this.value; };
+    var entObs=document.getElementById("ent-obs");
+    if(entObs) entObs.oninput=function(){ state.ent.observacion=this.value; };
+    var entFiltC=document.getElementById("ent-filt-curso");
+    if(entFiltC) entFiltC.onchange=function(){ state.ent.filtCurso=this.value; state.ent.filtEst=""; render(); };
+    var entFiltE=document.getElementById("ent-filt-est");
+    if(entFiltE) entFiltE.onchange=function(){ state.ent.filtEst=this.value; render(); };
+    var btnEntGuardar=document.getElementById("btn-guardar-ent");
+    if(btnEntGuardar) btnEntGuardar.onclick=function(){
+      var alDiv=document.getElementById("alert-ent");
+      var fecha=(document.getElementById("ent-fecha")||{}).value||state.ent.fecha||hoy();
+      var obs=(document.getElementById("ent-obs")||{}).value||"";
+      if(!state.ent.curso||!state.ent.estudiante){
+        alDiv.innerHTML='<div class="alert alert-err">⚠ Selecciona curso y estudiante.</div>'; return;
+      }
+      if(!obs.trim()){
+        alDiv.innerHTML='<div class="alert alert-err">⚠ Escribe una observación.</div>'; return;
+      }
+      var nueva={id:Date.now().toString(),fecha:fecha,curso:state.ent.curso,estudiante:state.ent.estudiante,apoderado:(document.getElementById("ent-apoderado")||{}).value||"",observacion:obs};
+      guardarEntrevistaFS(nueva);
+      state.ent.estudiante=""; state.ent.observacion=""; state.ent.apoderado=""; state.ent.fecha="";
+      alDiv.innerHTML='<div class="alert alert-ok">✅ Entrevista guardada correctamente</div>';
+      render();
+    };
+    document.querySelectorAll("[data-action='del-entrevista']").forEach(function(btn){
+      btn.onclick=function(){
+        var e=entrevistas.find(function(x){ return x.id===btn.dataset.id; });
+        if(!e) return;
+        showModal("Eliminar entrevista","¿Eliminar la entrevista de <strong>"+e.estudiante+"</strong> del "+fmtFecha(e.fecha)+"?",function(){
+          eliminarEntrevistaFS(btn.dataset.id);
+        });
+      };
+    });
   }
 }
 
